@@ -8,6 +8,7 @@
 #include <wchar.h>
 #include <stdint.h>
 #include <onnxruntime_c_api.h>
+#include <performance.h>
 #include <tokenizer.h>
 //#include <dml_provider_factory.h>
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
@@ -198,8 +199,14 @@ int main(int argc, char* argv[]) {
 	idx_d[1023] = *prompt;
 	prompt++;
 
+	clock_t timestamps[1024];
+	
 	for (int i = 0; i < 1024; i++) {
+		clock_t time_a = clock();
 		ORT_ABORT_ON_ERROR(g_ort->Run(session, NULL, input_names, input_list, 6, output_names, 6, output_list));
+		clock_t time_b = clock();
+
+		timestamps[i] = time_b - time_a;
 
 		input_list[1] = output_list[1];
 		input_list[2] = output_list[2];
@@ -223,6 +230,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	printf("\n");
+	report_performance(timestamps, 1024);
 
 	printf("Releasing memory...\n");
 	g_ort->ReleaseTypeInfo(idx_input_info);
