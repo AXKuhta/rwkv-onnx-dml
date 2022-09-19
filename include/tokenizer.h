@@ -1,4 +1,3 @@
-#include <stdint.h>
 
 typedef struct dict_t {
 	uint64_t* idx;

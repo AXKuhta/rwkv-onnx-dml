@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <wchar.h>
 #include <stdint.h>
+#include <sys/time.h>
 #include <performance.h>
 #include <tokenizer.h>
 #include <rwkv4.h>

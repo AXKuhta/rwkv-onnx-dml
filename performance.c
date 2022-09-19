@@ -1,3 +1,7 @@
+#include <stdint.h>
+#include <stdio.h>
+#include <math.h>
+#include <sys/time.h>
 #include <performance.h>
 
 // Reports average ms/token and deviation
