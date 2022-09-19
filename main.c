@@ -1,33 +1,20 @@
-// gcc.exe -O2 -Wall -Wextra main.c -lonnxruntime -o main.c.exe
-// Library and headers from: https://github.com/microsoft/onnxruntime/releases/download/v1.12.1/Microsoft.ML.OnnxRuntime.DirectML.1.12.1.zip
-
 #define _Frees_ptr_opt_ // Pointer parameters that are freed by the function, and thus the pointed-to memory should not be used after return.
 #define _Outptr_result_buffer_maybenull_(X)
 
+#include <onnxruntime_c_api.h>
 #include <stdio.h>
 #include <wchar.h>
 #include <stdint.h>
-#include <onnxruntime_c_api.h>
 #include <performance.h>
 #include <tokenizer.h>
-//#include <dml_provider_factory.h>
+#include <rwkv4.h>
+
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
 
 // https://github.com/microsoft/onnxruntime-inference-examples/blob/main/c_cxx/fns_candy_style_transfer/fns_candy_style_transfer.c
 const OrtApi* g_ort = NULL;
 
-// Does DML report its errors in 4-byte characters? It's either that or it doesn't report anything at all in this build.
-#define ORT_ABORT_ON_ERROR(expr)																	\
-	do {																							\
-		OrtStatus* onnx_status = (expr);															\
-		if (onnx_status != NULL) {																	\
-			const char* msg = g_ort->GetErrorMessage(onnx_status);									\
-			const int code = g_ort->GetErrorCode(onnx_status);										\
-			fprintf(stderr, "[%s:%d] Aborting on error %d: %s\n", __FILE__, __LINE__, code, msg);	\
-			g_ort->ReleaseStatus(onnx_status);														\
-			exit(-1);																				\
-		}																							\
-	} while (0);
+#include <ort_abort_on_error.h>
 
 int greedy_sampling(float* x) {
 	float max_v = x[0];
@@ -97,52 +84,18 @@ int main(int argc, char* argv[]) {
 	OrtSession* session;
 	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, model_path, session_options, &session));
 
-	size_t input_count = 0;
-
-	ORT_ABORT_ON_ERROR(g_ort->SessionGetInputCount(session, &input_count));
-
-	if (input_count != 6) {
-		printf("Not an RWKV model (Wrong input count)\n");
-		exit(-1);
-	}
-
-	OrtMemoryInfo* memory_info;
-	ORT_ABORT_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
-
-	const char* input_names[] = {"idx", "xx_att", "aa_att", "bb_att", "pp_att", "xx_ffn"};
-	const char* output_names[] = {"x", "xx_att_r", "aa_att_r", "bb_att_r", "pp_att_r", "xx_ffn_r"};
-
-	OrtTypeInfo* idx_input_info = NULL;
-	OrtTypeInfo* xx_att_input_info = NULL;
-
-	ORT_ABORT_ON_ERROR(g_ort->SessionGetInputTypeInfo(session, 0, &idx_input_info));
-	ORT_ABORT_ON_ERROR(g_ort->SessionGetInputTypeInfo(session, 1, &xx_att_input_info));
-
-	const OrtTensorTypeAndShapeInfo* idx_shape_info = NULL;
-	const OrtTensorTypeAndShapeInfo* xx_att_shape_info = NULL;
-
-	ORT_ABORT_ON_ERROR(g_ort->CastTypeInfoToTensorInfo(idx_input_info, &idx_shape_info));
-	ORT_ABORT_ON_ERROR(g_ort->CastTypeInfoToTensorInfo(xx_att_input_info, &xx_att_shape_info));
-
-	size_t state_dim = 0;
-
-	ORT_ABORT_ON_ERROR(g_ort->GetDimensionsCount(xx_att_shape_info, &state_dim));
-
-	if (state_dim != 2) {
-		printf("Not an RWKV model (Wrong input dimensionality)\n");
-		exit(-1);
-	}
-
 	int64_t idx_shape[] = {0};
 	int64_t state_shape[] = {0, 0};
 
-	ORT_ABORT_ON_ERROR(g_ort->GetDimensions(idx_shape_info, idx_shape, 1));
-	ORT_ABORT_ON_ERROR(g_ort->GetDimensions(xx_att_shape_info, state_shape, 2));
+	detect_dimensions(session, idx_shape, state_shape);
 
 	printf("Autodetected model parameters:\n");
 	printf(" ctx_len: %I64u\n", idx_shape[0]);
 	printf(" n_layer: %I64u\n", state_shape[0]);
 	printf(" n_embd: %I64u\n", state_shape[1]);
+
+	const char* input_names[] = {"idx", "xx_att", "aa_att", "bb_att", "pp_att", "xx_ffn"};
+	const char* output_names[] = {"x", "xx_att_r", "aa_att_r", "bb_att_r", "pp_att_r", "xx_ffn_r"};
 
 	const size_t idx_d_len = idx_shape[0] * sizeof(int32_t);
 	const size_t state_d_len = state_shape[0]*state_shape[1] * sizeof(float);
@@ -165,17 +118,15 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < idx_shape[0]; i++)
 		idx_d[i] = 0;
 
-	uint16_t prompt_d[1024] = {0};
-	uint16_t* prompt = prompt_d;
-
-	tokenize(prompt, 1023, "\nIn a shocking finding", dict);
-
 	OrtValue* idx = NULL;
 	OrtValue* xx_att = NULL;
 	OrtValue* aa_att = NULL;
 	OrtValue* bb_att = NULL;
 	OrtValue* pp_att = NULL;
 	OrtValue* xx_ffn = NULL;
+
+	OrtMemoryInfo* memory_info;
+	ORT_ABORT_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
 
 	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, idx_d, idx_d_len, idx_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &idx));
 	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_att_d, state_d_len, state_shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_att));
@@ -195,6 +146,11 @@ int main(int argc, char* argv[]) {
 
 	OrtValue* output_list[] = { x, xx_att_r, aa_att_r, bb_att_r, pp_att_r, xx_ffn_r };
 
+
+	uint16_t prompt_d[1024] = {0};
+	uint16_t* prompt = prompt_d;
+
+	tokenize(prompt, 1023, "\nIn a shocking finding", dict);
 
 	idx_d[1023] = *prompt;
 	prompt++;
@@ -233,8 +189,6 @@ int main(int argc, char* argv[]) {
 	report_performance(timestamps, 1024);
 
 	printf("Releasing memory...\n");
-	g_ort->ReleaseTypeInfo(idx_input_info);
-	g_ort->ReleaseTypeInfo(xx_att_input_info);
 	g_ort->ReleaseSessionOptions(session_options);
 	g_ort->ReleaseSession(session);
 	g_ort->ReleaseEnv(env);
