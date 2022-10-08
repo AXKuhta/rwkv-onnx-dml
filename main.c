@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <wchar.h>
 #include <stdint.h>
-#include <sys/time.h>
+#include <time.h>
 #include <performance.h>
 #include <tokenizer.h>
 #include <rwkv4.h>
@@ -38,6 +38,7 @@ void usage() {
 
 int main(int argc, char* argv[]) {
 	dict_t* dict = init_dict();
+	FILE* emb_f = open_emb();
 
 	g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
@@ -66,131 +67,139 @@ int main(int argc, char* argv[]) {
 	ORT_ABORT_ON_ERROR(g_ort->CreateSessionOptions(&session_options));
 	//ORT_ABORT_ON_ERROR(g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_DISABLE_ALL));
 
-	#ifndef _WIN32
-		// DirectML not available on Linux
-	#else
-		if (argc > 2) {
-			if (strcmp(argv[2], "dml") == 0) {
-				printf("DirectML enabled\n");
-				ORT_ABORT_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
-			}
-		}
-	#endif
+	OrtSession* session[24];
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.0.onnx", session_options, &session[0]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.1.onnx", session_options, &session[1]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.2.onnx", session_options, &session[2]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.3.onnx", session_options, &session[3]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.4.onnx", session_options, &session[4]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.5.onnx", session_options, &session[5]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.6.onnx", session_options, &session[6]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.7.onnx", session_options, &session[7]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.8.onnx", session_options, &session[8]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.9.onnx", session_options, &session[9]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.10.onnx", session_options, &session[10]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.11.onnx", session_options, &session[11]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.12.onnx", session_options, &session[12]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.13.onnx", session_options, &session[13]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.14.onnx", session_options, &session[14]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.15.onnx", session_options, &session[15]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.16.onnx", session_options, &session[16]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.17.onnx", session_options, &session[17]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.18.onnx", session_options, &session[18]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.19.onnx", session_options, &session[19]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.20.onnx", session_options, &session[20]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.21.onnx", session_options, &session[21]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.22.onnx", session_options, &session[22]));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.23.onnx", session_options, &session[23]));
 
-	const char* filename = argv[1];
-	ORTCHAR_T* model_path;
+	int64_t emb_shape[] = {1024};
+	int64_t state_shape[] = {1024};
 
-	#ifndef _WIN32
-		model_path = filename;
-	#else
-		// Windows wants filename in wide chars
-		const int len = strlen(filename) + 1;
-		model_path = malloc(len*4);
-
-		size_t ret = mbsrtowcs(model_path, &filename, len, NULL);
-		printf("Filename conversion: %I64u\n", ret);
-	#endif
-
-	OrtSession* session;
-	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, model_path, session_options, &session));
-
-	int64_t idx_shape[] = {0};
-	int64_t state_shape[] = {0, 0};
-
-	detect_dimensions(session, idx_shape, state_shape);
-
-	printf("Autodetected model parameters:\n");
-	printf(" ctx_len: %I64u\n", idx_shape[0]);
-	printf(" n_layer: %I64u\n", state_shape[0]);
-	printf(" n_embd: %I64u\n", state_shape[1]);
-
-	const char* input_names[] = {"idx", "xx_att", "aa_att", "bb_att", "pp_att", "xx_ffn"};
+	const char* input_names[] = {"emb", "xx_att", "aa_att", "bb_att", "pp_att", "xx_ffn"};
 	const char* output_names[] = {"x", "xx_att_r", "aa_att_r", "bb_att_r", "pp_att_r", "xx_ffn_r"};
 
-	const size_t idx_d_len = idx_shape[0] * sizeof(int32_t);
-	const size_t state_d_len = state_shape[0]*state_shape[1] * sizeof(float);
+	const size_t emb_d_len = emb_shape[0] * sizeof(float);
+	const size_t state_d_len = state_shape[0] * sizeof(float);
 
-	int32_t* idx_d = malloc(idx_d_len);
-	float* xx_att_d = malloc(state_d_len);
-	float* aa_att_d = malloc(state_d_len);
-	float* bb_att_d = malloc(state_d_len);
-	float* pp_att_d = malloc(state_d_len);
-	float* xx_ffn_d = malloc(state_d_len);
+	float* emb_d = malloc(emb_d_len);
+	float* xx_att_d[24];
+	float* aa_att_d[24];
+	float* bb_att_d[24];
+	float* pp_att_d[24];
+	float* xx_ffn_d[24];
 
-	for (int i = 0; i < state_shape[0]*state_shape[1]; i++) {
-		xx_att_d[i] = 0;
-		aa_att_d[i] = 0;
-		bb_att_d[i] = 0;
-		pp_att_d[i] = -1e30;
-		xx_ffn_d[i] = 0;
+	for (int i = 0; i < 24; i++) {
+                xx_att_d[i] = malloc(state_d_len);
+                aa_att_d[i] = malloc(state_d_len);
+                bb_att_d[i] = malloc(state_d_len);
+                pp_att_d[i] = malloc(state_d_len);
+                xx_ffn_d[i] = malloc(state_d_len);
+
+		for (int j = 0; j < state_shape[0]; j++) {
+			xx_att_d[i][j] = 0;
+			aa_att_d[i][j] = 0;
+			bb_att_d[i][j] = 0;
+			pp_att_d[i][j] = -1e30;
+			xx_ffn_d[i][j] = 0;
+		}
 	}
 
-	for (int i = 0; i < idx_shape[0]; i++)
-		idx_d[i] = 0;
+	for (int i = 0; i < emb_shape[0]; i++)
+		emb_d[i] = 0;
 
-	OrtValue* idx = NULL;
-	OrtValue* xx_att = NULL;
-	OrtValue* aa_att = NULL;
-	OrtValue* bb_att = NULL;
-	OrtValue* pp_att = NULL;
-	OrtValue* xx_ffn = NULL;
+	OrtValue* emb = NULL;
+	OrtValue* xx_att[24];
+	OrtValue* aa_att[24];
+	OrtValue* bb_att[24];
+	OrtValue* pp_att[24];
+	OrtValue* xx_ffn[24];
 
 	OrtMemoryInfo* memory_info;
 	ORT_ABORT_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, emb_d, emb_d_len, emb_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &emb));
 
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, idx_d, idx_d_len, idx_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &idx));
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_att_d, state_d_len, state_shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_att));
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, aa_att_d, state_d_len, state_shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &aa_att));
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, bb_att_d, state_d_len, state_shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &bb_att));
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, pp_att_d, state_d_len, state_shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &pp_att));
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_ffn_d, state_d_len, state_shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_ffn));
-
-	const OrtValue* input_list[] = { idx, xx_att, aa_att, bb_att, pp_att, xx_ffn };
-
-	OrtValue* x = NULL;
-	OrtValue* xx_att_r = NULL;
-	OrtValue* aa_att_r = NULL;
-	OrtValue* bb_att_r = NULL;
-	OrtValue* pp_att_r = NULL;
-	OrtValue* xx_ffn_r = NULL;
-
-	OrtValue* output_list[] = { x, xx_att_r, aa_att_r, bb_att_r, pp_att_r, xx_ffn_r };
-
+	for (int i = 0; i < 24; i++) {
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, aa_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &aa_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, bb_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &bb_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, pp_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &pp_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_ffn_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_ffn[i]));
+	}
 
 	uint16_t prompt_d[1024] = {0};
 	uint16_t* prompt = prompt_d;
 
 	tokenize(prompt, 1023, "\nIn a shocking finding", dict);
 
-	idx_d[1023] = *prompt;
+	int token = *prompt;
 	prompt++;
 
+	OrtValue* x = emb;
+
 	clock_t timestamps[1024];
-	
+
 	for (int i = 0; i < 1024; i++) {
 		clock_t time_a = clock();
-		ORT_ABORT_ON_ERROR(g_ort->Run(session, NULL, input_names, input_list, 6, output_names, 6, output_list));
+		read_emb(emb_f, token, emb_d);
+		x = emb;
+
+		printf(" [00/24]");
+
+		for (int j = 0; j < 24; j++) {
+			const OrtValue* input_list[6] = { x, xx_att[j], aa_att[j], bb_att[j], pp_att[j], xx_ffn[j] };
+			OrtValue* output_list[6] = { NULL }; // Make sure output_list is zeroed or else onnxruntime will use its values to do output shape checking
+
+			ORT_ABORT_ON_ERROR(g_ort->Run(session[j], NULL, input_names, input_list, 6, output_names, 6, output_list));
+
+			xx_att[j] = output_list[1];
+                        aa_att[j] = output_list[2];
+                        bb_att[j] = output_list[3];
+                        pp_att[j] = output_list[4];
+                        xx_ffn[j] = output_list[5];
+
+			x = output_list[0];
+
+			printf("\x7F\x7F\x7F\x7F\x7F\x7F\x7F\x7F");
+			printf(" [%02d/24]", j+1);
+			fflush(stdout);
+		}
+
 		clock_t time_b = clock();
 
 		timestamps[i] = time_b - time_a;
 
-		input_list[1] = output_list[1];
-		input_list[2] = output_list[2];
-		input_list[3] = output_list[3];
-		input_list[4] = output_list[4];
-		input_list[5] = output_list[5];
-
 		float* xx;
-		ORT_ABORT_ON_ERROR(g_ort->GetTensorMutableData(output_list[0], (void**)&xx));
+		ORT_ABORT_ON_ERROR(g_ort->GetTensorMutableData(x, (void**)&xx));
 
-		int token = greedy_sampling(xx);
+		token = greedy_sampling(xx);
+		printf("\x7F\x7F\x7F\x7F\x7F\x7F\x7F\x7F");
 
 		if (*prompt == 0) {
 			printf("%s", dict->list_c[dict->list_a[token]]);
-			idx_d[1023] = token;
 		} else {
 			printf("%s", dict->list_c[dict->list_a[*prompt]]);
-			idx_d[1023] = *prompt;
+			token = *prompt;
 			prompt++;
 		}
 	}
@@ -200,9 +209,11 @@ int main(int argc, char* argv[]) {
 
 	printf("Releasing memory...\n");
 	g_ort->ReleaseSessionOptions(session_options);
-	g_ort->ReleaseSession(session);
+	for (int j = 0; j < 24; j++) g_ort->ReleaseSession(session[j]);
 	g_ort->ReleaseEnv(env);
 	printf("Done\n");
+
+	fclose(emb_f);
 
 	return 0;
 }

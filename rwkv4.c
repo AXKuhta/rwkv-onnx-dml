@@ -47,3 +47,19 @@ void detect_dimensions(OrtSession* session, int64_t* idx_shape, int64_t* state_s
 	g_ort->ReleaseTypeInfo(idx_input_info);
 	g_ort->ReleaseTypeInfo(xx_att_input_info);
 }
+
+FILE* open_emb() {
+	FILE* fd = fopen("emb.weight.bin", "rb");
+
+	if (!fd) {
+		printf("Unable to open emb.weight.bin\n");
+		exit(-1);
+	}
+
+	return fd;
+}
+
+void read_emb(FILE* file, int token, float* data) {
+	fseek(file, sizeof(float)*1024*token, SEEK_SET);
+	fread(data, sizeof(float), 1024, file);
+}
