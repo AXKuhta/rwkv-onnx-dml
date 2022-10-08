@@ -83,6 +83,7 @@ int main(int argc, char* argv[]) {
 	#ifndef _WIN32
 		model_path = filename;
 	#else
+		// Windows wants filename in wide chars
 		const int len = strlen(filename) + 1;
 		model_path = malloc(len*4);
 
@@ -91,7 +92,7 @@ int main(int argc, char* argv[]) {
 	#endif
 
 	OrtSession* session;
-	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, filename, session_options, &session));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, model_path, session_options, &session));
 
 	int64_t idx_shape[] = {0};
 	int64_t state_shape[] = {0, 0};
