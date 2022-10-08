@@ -10,42 +10,26 @@ extern const OrtApi* g_ort;
 
 #include <ort_abort_on_error.h>
 
-void detect_dimensions(OrtSession* session, int64_t* idx_shape, int64_t* state_shape) {
-	size_t input_count = 0;
-	ORT_ABORT_ON_ERROR(g_ort->SessionGetInputCount(session, &input_count));
+void detect_dimensions(int* n_layer, int* n_embd, int* ctx_len) {
+	FILE* info = fopen("rwkv.json", "r");
 
-	if (input_count != 6) {
-		printf("Not an RWKV model (Wrong input count)\n");
+	if (!info) {
+		printf("Unable to open rwkv.json\n");
 		exit(-1);
 	}
 
-	OrtTypeInfo* idx_input_info = NULL;
-	OrtTypeInfo* xx_att_input_info = NULL;
+	int ret = fscanf(info, "{\"n_layer\": %d, \"n_embd\": %d, \"ctx_len\": %d}", n_layer, n_embd, ctx_len);
 
-	ORT_ABORT_ON_ERROR(g_ort->SessionGetInputTypeInfo(session, 0, &idx_input_info));
-	ORT_ABORT_ON_ERROR(g_ort->SessionGetInputTypeInfo(session, 1, &xx_att_input_info));
-
-	const OrtTensorTypeAndShapeInfo* idx_shape_info = NULL;
-	const OrtTensorTypeAndShapeInfo* xx_att_shape_info = NULL;
-
-	// Valid until TypeInfo is released
-	ORT_ABORT_ON_ERROR(g_ort->CastTypeInfoToTensorInfo(idx_input_info, &idx_shape_info));
-	ORT_ABORT_ON_ERROR(g_ort->CastTypeInfoToTensorInfo(xx_att_input_info, &xx_att_shape_info));
-
-	size_t state_dim = 0;
-
-	ORT_ABORT_ON_ERROR(g_ort->GetDimensionsCount(xx_att_shape_info, &state_dim));
-
-	if (state_dim != 2) {
-		printf("Not an RWKV model (Wrong input dimensionality)\n");
+	if (ret != 3) {
+		printf("Formatting error in rwkv.json\n");
 		exit(-1);
 	}
 
-	ORT_ABORT_ON_ERROR(g_ort->GetDimensions(idx_shape_info, idx_shape, 1));
-	ORT_ABORT_ON_ERROR(g_ort->GetDimensions(xx_att_shape_info, state_shape, 2));
 
-	g_ort->ReleaseTypeInfo(idx_input_info);
-	g_ort->ReleaseTypeInfo(xx_att_input_info);
+	printf("Detected model parameters:\n");
+	printf(" ctx_len: %d\n", *n_layer);
+	printf(" n_layer: %d\n", *n_embd);
+	printf(" n_embd: %d\n", *ctx_len);
 }
 
 FILE* open_emb() {

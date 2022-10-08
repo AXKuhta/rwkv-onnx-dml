@@ -36,9 +36,6 @@ void usage() {
 }
 
 int main(int argc, char* argv[]) {
-	dict_t* dict = init_dict();
-	FILE* emb_f = open_emb();
-
 	g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 	if (!g_ort) {
@@ -58,6 +55,13 @@ int main(int argc, char* argv[]) {
 			loglevel = ORT_LOGGING_LEVEL_VERBOSE;
 		}
 	}
+
+	int n_layer, n_embd, ctx_len;
+
+	detect_dimensions(&n_layer, &n_embd, &ctx_len);
+
+	dict_t* dict = init_dict();
+	FILE* emb_f = open_emb();
 
 	OrtThreadingOptions* thread_options;
 	ORT_ABORT_ON_ERROR(g_ort->CreateThreadingOptions(&thread_options));
@@ -96,16 +100,14 @@ int main(int argc, char* argv[]) {
 	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.22.onnx", session_options, &session[22]));
 	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, "rwkv.23.onnx", session_options, &session[23]));
 
-	int64_t emb_shape[] = {1024};
-	int64_t state_shape[] = {1024};
+	int64_t state_shape[] = { n_embd };
 
 	const char* input_names[] = {"emb", "xx_att", "aa_att", "bb_att", "pp_att", "xx_ffn"};
 	const char* output_names[] = {"x", "xx_att_r", "aa_att_r", "bb_att_r", "pp_att_r", "xx_ffn_r"};
 
-	const size_t emb_d_len = emb_shape[0] * sizeof(float);
-	const size_t state_d_len = state_shape[0] * sizeof(float);
+	const size_t state_bsz = n_embd * sizeof(float);
 
-	float* emb_d = malloc(emb_d_len);
+	float* emb_d = malloc(state_bsz);
 	float* xx_att_d[24];
 	float* aa_att_d[24];
 	float* bb_att_d[24];
@@ -113,13 +115,13 @@ int main(int argc, char* argv[]) {
 	float* xx_ffn_d[24];
 
 	for (int i = 0; i < 24; i++) {
-                xx_att_d[i] = malloc(state_d_len);
-                aa_att_d[i] = malloc(state_d_len);
-                bb_att_d[i] = malloc(state_d_len);
-                pp_att_d[i] = malloc(state_d_len);
-                xx_ffn_d[i] = malloc(state_d_len);
+                xx_att_d[i] = malloc(state_bsz);
+                aa_att_d[i] = malloc(state_bsz);
+                bb_att_d[i] = malloc(state_bsz);
+                pp_att_d[i] = malloc(state_bsz);
+                xx_ffn_d[i] = malloc(state_bsz);
 
-		for (int j = 0; j < state_shape[0]; j++) {
+		for (int j = 0; j < n_embd; j++) {
 			xx_att_d[i][j] = 0;
 			aa_att_d[i][j] = 0;
 			bb_att_d[i][j] = 0;
@@ -128,7 +130,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	for (int i = 0; i < emb_shape[0]; i++)
+	for (int i = 0; i < n_embd; i++)
 		emb_d[i] = 0;
 
 	OrtValue* emb = NULL;
@@ -140,14 +142,14 @@ int main(int argc, char* argv[]) {
 
 	OrtMemoryInfo* memory_info;
 	ORT_ABORT_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
-	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, emb_d, emb_d_len, emb_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &emb));
+	ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, emb_d, state_bsz, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &emb));
 
 	for (int i = 0; i < 24; i++) {
-		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_att[i]));
-		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, aa_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &aa_att[i]));
-		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, bb_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &bb_att[i]));
-		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, pp_att_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &pp_att[i]));
-		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_ffn_d[i], state_d_len, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_ffn[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_att_d[i], state_bsz, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, aa_att_d[i], state_bsz, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &aa_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, bb_att_d[i], state_bsz, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &bb_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, pp_att_d[i], state_bsz, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &pp_att[i]));
+		ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, xx_ffn_d[i], state_bsz, state_shape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &xx_ffn[i]));
 	}
 
 	uint16_t prompt_d[1024] = {0};
