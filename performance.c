@@ -1,11 +1,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <math.h>
-#include <time.h>
+#include <sys/time.h>
 #include <performance.h>
 
-// Reports average ms/token and deviation
-void report_performance(clock_t* timestamps, size_t count) {
+// Takes microseconds, reports average ms/token and deviation
+// Please only feed it relative times
+void report_performance(uint64_t* timestamps, size_t count) {
 	double avg = 0.0;
 	double avgsq = 0.0;
 	double stddev = 0.0;
@@ -24,5 +25,13 @@ void report_performance(clock_t* timestamps, size_t count) {
 	avgsq = avgsq / count;
 	stddev = sqrt(avgsq);
 
-	printf("%.1f ms/token, %.1f stddev\n", avg, stddev);
+	printf("%.1f ms/token, %.1f ms stddev\n", avg / 1000.0, stddev / 1000.0);
 }
+
+
+uint64_t microseconds() {
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec*(uint64_t)1000000 + tv.tv_usec;
+}
+
