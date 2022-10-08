@@ -59,11 +59,15 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+	OrtThreadingOptions* thread_options;
+	ORT_ABORT_ON_ERROR(g_ort->CreateThreadingOptions(&thread_options));
+
 	OrtEnv* env;
-	ORT_ABORT_ON_ERROR(g_ort->CreateEnv(loglevel, "test", &env));
+	ORT_ABORT_ON_ERROR(g_ort->CreateEnvWithGlobalThreadPools(loglevel, "test", thread_options, &env));
 
 	OrtSessionOptions* session_options;
 	ORT_ABORT_ON_ERROR(g_ort->CreateSessionOptions(&session_options));
+	ORT_ABORT_ON_ERROR(g_ort->DisablePerSessionThreads(session_options));
 	//ORT_ABORT_ON_ERROR(g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_DISABLE_ALL));
 
 	OrtSession* session[24];
