@@ -1,2 +1,3 @@
 
-void report_performance(clock_t* timestamps, size_t count);
+void report_performance(uint64_t* timestamps, size_t count);
+uint64_t microseconds();

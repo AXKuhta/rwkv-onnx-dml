@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <wchar.h>
 #include <stdint.h>
-#include <time.h>
 #include <performance.h>
 #include <tokenizer.h>
 #include <rwkv4.h>
@@ -157,10 +156,10 @@ int main(int argc, char* argv[]) {
 
 	OrtValue* x = emb;
 
-	clock_t timestamps[1024];
+	uint64_t timestamps[1024];
 
-	for (int i = 0; i < 1024; i++) {
-		clock_t time_a = clock();
+	for (int i = 0; i < 16; i++) {
+		uint64_t time_a = microseconds();
 		read_emb(emb_f, token, emb_d);
 		x = emb;
 
@@ -185,7 +184,7 @@ int main(int argc, char* argv[]) {
 			fflush(stdout);
 		}
 
-		clock_t time_b = clock();
+		uint64_t time_b = microseconds();
 
 		timestamps[i] = time_b - time_a;
 
@@ -205,7 +204,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	printf("\n");
-	report_performance(timestamps, 1024);
+	report_performance(timestamps, 16);
 
 	printf("Releasing memory...\n");
 	g_ort->ReleaseSessionOptions(session_options);
