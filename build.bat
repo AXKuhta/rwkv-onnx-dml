@@ -1,9 +1,9 @@
-@REM For some reason TDM-GCC doesn't want to start anywhere except its bin/ folder
+@REM https://github.com/mstorsjo/llvm-mingw/releases
 
-@cd C:\TDM-GCC-64\bin
-@gcc -O2 -Wall -Wextra -I %~dp0\include -c %~dp0\performance.c -o %~dp0\performance.o
-@gcc -O2 -Wall -Wextra -I %~dp0\include -c %~dp0\tokenizer.c -o %~dp0\tokenizer.o
-@gcc -O2 -Wall -Wextra -I %~dp0\include -c %~dp0\rwkv4.c -o %~dp0\rwkv4.o
-@gcc -O2 -Wall -Wextra -I %~dp0\include -c %~dp0\main.c -o %~dp0\main.o
-@gcc -O2 -Wall -Wextra -L %~dp0\ %~dp0\performance.o %~dp0\tokenizer.o %~dp0\rwkv4.o %~dp0\main.o -o %~dp0\rwkvonnx.exe -lonnxruntime
+@SET clang=C:\LLVM\bin\clang
+@%clang% -O2 -Wall -Wextra -I include -c performance.c -o performance.o
+@%clang% -O2 -Wall -Wextra -I include -c tokenizer.c -o tokenizer.o
+@%clang% -O2 -Wall -Wextra -I include -c rwkv4.c -o rwkv4.o
+@%clang% -O2 -Wall -Wextra -I include -c main.c -o main.o
+@%clang% -O2 -Wall -Wextra -L . performance.o tokenizer.o rwkv4.o main.o -o rwkvonnx.exe -lonnxruntime
 @pause
