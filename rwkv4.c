@@ -43,7 +43,3 @@ FILE* open_emb() {
 	return fd;
 }
 
-void read_emb(FILE* file, int token, float* data) {
-	fseek(file, sizeof(float)*1024*token, SEEK_SET);
-	fread(data, sizeof(float), 1024, file);
-}

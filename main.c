@@ -166,7 +166,9 @@ int main(int argc, char* argv[]) {
 
 	for (int i = 0; i < 16; i++) {
 		uint64_t time_a = microseconds();
-		read_emb(emb_f, token, emb_d);
+
+		fseek(emb_f, state_bsz*token, SEEK_SET);
+		fread(emb_d, state_bsz, 1, emb_f);
 		x = emb;
 
 		printf(" [00/24]");
