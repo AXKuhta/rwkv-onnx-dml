@@ -66,24 +66,32 @@ int main(int argc, char* argv[]) {
 	ORT_ABORT_ON_ERROR(g_ort->CreateSessionOptions(&session_options));
 	//ORT_ABORT_ON_ERROR(g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_DISABLE_ALL));
 
-	if (argc > 2) {
-		if (strcmp(argv[2], "dml") == 0) {
-			printf("DirectML enabled\n");
-			ORT_ABORT_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+	#ifndef _WIN32
+		// DirectML not available on Linux
+	#else
+		if (argc > 2) {
+			if (strcmp(argv[2], "dml") == 0) {
+				printf("DirectML enabled\n");
+				ORT_ABORT_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+			}
 		}
-	}
+	#endif
 
 	const char* filename = argv[1];
-	const int len = strlen(filename) + 1;
+	ORTCHAR_T* model_path;
 
-	ORTCHAR_T* model_path = malloc(len*4);
+	#ifndef _WIN32
+		model_path = filename;
+	#else
+		const int len = strlen(filename) + 1;
+		model_path = malloc(len*4);
 
-	size_t ret = mbsrtowcs(model_path, &filename, len, NULL);
-
-	printf("Filename conversion: %I64u\n", ret);
+		size_t ret = mbsrtowcs(model_path, &filename, len, NULL);
+		printf("Filename conversion: %I64u\n", ret);
+	#endif
 
 	OrtSession* session;
-	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, model_path, session_options, &session));
+	ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, filename, session_options, &session));
 
 	int64_t idx_shape[] = {0};
 	int64_t state_shape[] = {0, 0};
