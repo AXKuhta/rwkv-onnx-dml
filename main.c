@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
 
 	// Load all layers
 	for (int i = 0; i < n_layer; i++) {
-		char filename[128] = {0};
+		char* filename = malloc(128);
 		ORTCHAR_T* model_path;
 
 		snprintf(filename, 128, "rwkv.%d.onnx", i);
